@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>積込管理スキャナー</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; padding: 15px; background: #f4f6f8; }
+    .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+    h2 { margin-top: 0; font-size: 1.1rem; color: #333; }
+    .status-box { padding: 10px; background: #eef6ff; border-radius: 8px; font-weight: bold; color: #1a73e8; margin-bottom: 10px; }
+    #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
+    .btn { display: block; width: 100%; padding: 12px; font-size: 1rem; font-weight: bold; text-align: center; color: white; border: none; border-radius: 8px; margin-top: 10px; cursor: pointer; }
+    .btn-blue { background: #1a73e8; }
+    .btn-red { background: #d93025; }
+    ul { list-style: none; padding: 0; margin: 0; max-height: 150px; overflow-y: auto; }
+    li { padding: 8px; border-bottom: 1px solid #eee; font-size: 0.9rem; color: #555; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="status-box" id="step-label">Step 1: トラック便IDをスキャンしてください</div>
+    <div>トラックID: <strong id="disp-truck-id">未設定</strong></div>
+    <button class="btn btn-red" id="reset-truck-btn" onclick="resetTruck()" style="display:none; padding:6px; font-size:0.8rem;">トラックIDを変更</button>
+  </div>
+
+  <div class="card">
+    <div id="reader"></div>
+  </div>
+
+  <div class="card">
+    <h2>今回スキャンしたかご車</h2>
+    <ul id="scan-log"></ul>
+  </div>
+
+  <script>
+    // ★ここに先ほどコピーしたGASのウェブアプリURLを貼り付けてください
+    const GAS_URL = "YOUR_GAS_WEB_APP_URL";https://script.google.com/macros/s/AKfycbxUkUHjDa7dCj5c6LJdjH0UNPfCbPSHQAwfUUxopKle3GvEWitIt10qUE4RAHFZDu3gbQ/exec
+
+    let currentTruckId = "";
+    let html5QrCode;
+    let isProcessing = false;
+
+    window.onload = function() {
+      html5QrCode = new Html5Qrcode("reader");
+      startCamera();
+    };
+
+    function startCamera() {
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        onScanSuccess
+      ).catch(err => {
+        alert("カメラの起動に失敗しました。ブラウザのカメラ権限を許可してください。");
+      });
+    }
+
+    function onScanSuccess(decodedText) {
+      if (isProcessing) return;
+      isProcessing = true;
+
+      if (!currentTruckId) {
+        currentTruckId = decodedText;
+        document.getElementById("disp-truck-id").innerText = currentTruckId;
+        document.getElementById("step-label").innerText = "Step 2: かご車IDを連続スキャンしてください";
+        document.getElementById("step-label").style.background = "#e6f4ea";
+        document.getElementById("step-label").style.color = "#137333";
+        document.getElementById("reset-truck-btn").style.display = "block";
+        
+        if (navigator.vibrate) navigator.vibrate(200);
+        setTimeout(() => { isProcessing = false; }, 1500);
+      } else {
+        const cageId = decodedText;
+        
+        // GASへデータを送信
+        fetch(GAS_URL, {
+          method: "POST",
+          mode: "no-cors", // GASへのクロスドメイン対策
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ truckId: currentTruckId, cageId: cageId })
+        }).then(() => {
+          const log = document.getElementById("scan-log");
+          const li = document.createElement("li");
+          const now = new Date().toLocaleTimeString();
+          li.innerText = `[${now}] かご車: ${cageId}`;
+          log.insertBefore(li, log.firstChild);
+          
+          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+          setTimeout(() => { isProcessing = false; }, 1200);
+        }).catch(err => {
+          alert("送信エラーが発生しました");
+          isProcessing = false;
+        });
+      }
+    }
+
+    function resetTruck() {
+      currentTruckId = "";
+      document.getElementById("disp-truck-id").innerText = "未設定";
+      document.getElementById("step-label").innerText = "Step 1: トラック便IDをスキャンしてください";
+      document.getElementById("step-label").style.background = "#eef6ff";
+      document.getElementById("step-label").style.color = "#1a73e8";
+      document.getElementById("reset-truck-btn").style.display = "none";
+      document.getElementById("scan-log").innerHTML = "";
+    }
+  </script>
+</body>
+</html>
